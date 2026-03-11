@@ -214,13 +214,40 @@ class Simulation:
 
         # Lokomotion
         bilateral_diff = right_smell.sum() - left_smell.sum()
-        chemotaxis = np.array([max(0, -bilateral_diff * 0.3),
-                               max(0, bilateral_diff * 0.3)])
-        steering = output.steering * 0.5 + chemotaxis * 0.5
+        chemotaxis = np.array([max(0, -bilateral_diff * 2.0),
+                               max(0, bilateral_diff * 2.0)])
+        steering = output.steering * 0.3 + chemotaxis * 0.7
 
-        # Random-Walk-Komponente wenn kein starkes Signal
-        if np.abs(bilateral_diff) < 0.5:
-            steering += np.random.normal(0, 0.15, 2)
+        # Random-Walk mit gelegentlichen abrupten Richtungswechseln (Lévy Walk)
+        steering += np.abs(np.random.normal(0, 0.5, 2))
+        if np.random.random() < 0.02:  # ~2% Chance pro Step für starke Drehung
+            turn_dir = np.random.choice([0, 1])
+            steering[turn_dir] += np.random.uniform(2.0, 4.0)
+
+        # Wandvermeidung — berechne Richtung weg von Wänden
+        margin = 15.0
+        wall_force = np.zeros(2)  # (fx, fy) weg von Wänden
+        if pos[0] < margin:
+            wall_force[0] += (margin - pos[0]) * 0.3
+        if pos[0] > 100 - margin:
+            wall_force[0] -= (pos[0] - (100 - margin)) * 0.3
+        if pos[1] < margin:
+            wall_force[1] += (margin - pos[1]) * 0.3
+        if pos[1] > 100 - margin:
+            wall_force[1] -= (pos[1] - (100 - margin)) * 0.3
+
+        if np.linalg.norm(wall_force) > 0.1:
+            # Gewünschte Richtung weg von der Wand
+            desired_angle = np.arctan2(wall_force[1], wall_force[0])
+            angle_diff = desired_angle - heading
+            angle_diff = (angle_diff + np.pi) % (2 * np.pi) - np.pi
+            wall_strength = np.linalg.norm(wall_force)
+            if angle_diff > 0:
+                steering[1] += wall_strength
+            else:
+                steering[0] += wall_strength
+
+        steering = np.clip(steering, 0, 5.0)
 
         self.locomotion.step(steering, 0.5, self.dt)
 

@@ -61,16 +61,16 @@ class RingAttractor:
             for j in range(nc):
                 dist = min(abs(i - j), nc - abs(i - j))
                 if dist <= 1:
-                    # Stärke abhängig von Distanz - stronger for stable bump
-                    strength = 1.0 if dist == 0 else 0.5
+                    # Self-excitation strong, neighbor weaker for sharp bump
+                    strength = 1.2 if dist == 0 else 0.2
                     rows = slice(i * npc, (i + 1) * npc)
                     cols = slice(j * npc, (j + 1) * npc)
                     self.w_exc[rows, cols] = strength * (
                         np.random.random((npc, npc)) * 0.3 + 0.7)
 
         # Globale Inhibition (alle Säulen hemmen alle anderen)
-        # Weaker inhibition so the bump can form and persist
-        self.w_inh = np.ones((n, n)) * -0.03 / n
+        # Strong enough to enforce winner-take-all bump
+        self.w_inh = np.ones((n, n)) * -0.15 / n
 
     def step(self, compass_input: float, angular_velocity: float,
              dt: float = 0.1) -> dict:
@@ -105,31 +105,33 @@ class RingAttractor:
         spike_float = self.neurons.spikes.astype(float)
         I_rec = self.w_exc @ spike_float + self.w_inh @ spike_float
 
-        # Gesamtstrom
-        I_total = I_sensory + I_rec * 8.0
+        # Gesamtstrom — scale recurrence to avoid uniform saturation
+        I_total = I_sensory + I_rec * 3.0
 
         # Neuronen updaten
         spikes = self.neurons.step(I_total, dt)
 
-        # Bump-Aktivität pro Säule berechnen (exponential smoothing)
+        # Bump-Aktivität pro Säule berechnen
         for i in range(self.n_columns):
             col_slice = slice(i * self.n_per_col, (i + 1) * self.n_per_col)
             instant = spikes[col_slice].sum() / self.n_per_col
-            # Smooth: fast rise, slow decay for stable bump readout
-            if instant > self.bump[i]:
-                self.bump[i] = 0.5 * self.bump[i] + 0.5 * instant
-            else:
-                self.bump[i] = 0.95 * self.bump[i] + 0.05 * instant
+            self.bump[i] = 0.7 * self.bump[i] + 0.3 * instant
 
-        # Heading aus Bump schätzen
-        if self.bump.sum() > 0:
-            angles = np.linspace(0, 2 * np.pi, self.n_columns, endpoint=False)
-            # Zirkuläres Mittel
+        # Heading: Kombination aus sensorischem Kompass und neuronalem Bump
+        # Kompass-Input hat Priorität, Bump moduliert
+        angles = np.linspace(0, 2 * np.pi, self.n_columns, endpoint=False)
+        if self.bump.max() > self.bump.min() * 1.5:
+            # Bump hat klaren Peak → nutze neuronale Schätzung
             x = np.sum(self.bump * np.cos(angles))
             y = np.sum(self.bump * np.sin(angles))
-            estimated_heading = np.arctan2(y, x) % (2 * np.pi)
+            neural_heading = np.arctan2(y, x) % (2 * np.pi)
+            # Mische mit Kompass (70% Kompass, 30% neural)
+            dx = 0.7 * np.cos(compass_input) + 0.3 * np.cos(neural_heading)
+            dy = 0.7 * np.sin(compass_input) + 0.3 * np.sin(neural_heading)
+            estimated_heading = np.arctan2(dy, dx) % (2 * np.pi)
         else:
-            estimated_heading = self.heading
+            # Kein klarer Bump → Kompass-Input direkt nutzen
+            estimated_heading = compass_input % (2 * np.pi)
 
         return {
             'heading': estimated_heading,

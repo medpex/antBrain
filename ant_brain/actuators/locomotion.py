@@ -40,9 +40,9 @@ class LocomotionController:
         self.leg_phases = np.array([0, np.pi, 0, np.pi, 0, np.pi])
         self.leg_names = ['L1', 'L2', 'L3', 'R1', 'R2', 'R3']
 
-        # Maximale Geschwindigkeit (cm/s, typisch für Ameise)
-        self.max_speed = 3.0  # ~3 cm/s
-        self.max_turn_rate = 2.0  # rad/s
+        # Geschwindigkeit (Arena-Einheiten/s, skaliert für Visualisierung)
+        self.max_speed = 100.0
+        self.max_turn_rate = 80.0  # rad/s — hoch skaliert für dt=0.5ms Schritte
 
     def step(self, steering: np.ndarray, speed_command: float = 0.5,
              dt: float = 0.1) -> dict:
