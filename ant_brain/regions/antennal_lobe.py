@@ -73,11 +73,12 @@ class Glomerulus:
         boosted_activation = np.clip(orn_activation * 3.0, 0, 1.0)
         orn_spikes = boosted_activation > np.random.random(self.n_orns)
 
-        I_ln = self.syn_orn_ln.transmit(orn_spikes) - lateral_inhibition
+        I_ln = self.syn_orn_ln.transmit(orn_spikes)
         ln_spikes = self.lns.step(I_ln, dt)
 
+        # Laterale Inhibition wirkt auf PNs (Winner-take-all Schärfung)
         I_pn = (self.syn_orn_pn.transmit(orn_spikes) +
-                self.syn_ln_pn.transmit(ln_spikes))
+                self.syn_ln_pn.transmit(ln_spikes) - lateral_inhibition)
         pn_spikes = self.pns.step(I_pn, dt)
 
         return pn_spikes

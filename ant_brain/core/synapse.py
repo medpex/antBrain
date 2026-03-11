@@ -169,23 +169,26 @@ class STDPSynapse:
 
         da = self.dopamine_level
 
-        # LTP: post spikt → pre-trace verstärkt Verbindung
+        # Biologisch korrektes 3-Faktor-STDP für Insekten-Pilzkörper:
+        # - Hohe DA + Koinzidenz = LTP (Belohnungslernen)
+        # - Niedrige DA + Koinzidenz = LTD (Vergessen/Extinktion)
+
+        # LTP: post spikt → pre-trace verstärkt Verbindung (DA-abhängig)
         for j in post_active:
             idx = self.conn_indices[j]
             if len(idx) > 0:
                 self.conn_weights[j] += self.a_plus * da * self.trace_pre[idx] * dt
 
-        # LTD: pre spikt → post-trace schwächt Verbindung
+        # LTD: pre spikt → post-trace schwächt Verbindung (stärker bei niedrigem DA)
+        ltd_factor = max(0.1, 2.0 - da)  # Hohe DA unterdrückt LTD
         if len(pre_active) > 0:
-            pre_set = set(pre_active)
             for j in range(self.n_post):
                 idx = self.conn_indices[j]
                 if len(idx) > 0:
-                    # Finde Überlappung
                     in_pre = np.isin(idx, pre_active)
                     if np.any(in_pre):
                         self.conn_weights[j][in_pre] -= (
-                            self.a_minus * da * self.trace_post[j] * dt)
+                            self.a_minus * ltd_factor * self.trace_post[j] * dt)
 
         # Gewichte clippen
         for j in range(self.n_post):

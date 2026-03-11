@@ -92,10 +92,11 @@ class CompoundEye:
             heading: Aktuelle Blickrichtung (rad)
 
         Returns:
-            Geschätzter Polarisationswinkel
+            Geschätzter Polarisationswinkel relativ zur Kopfrichtung
         """
         # Polarisationsmuster ist senkrecht zur Sonneneinfallsrichtung
-        pol_angle = sun_azimuth + np.pi / 2
+        # DRA detektiert den E-Vektor relativ zur Kopfrichtung
+        pol_angle = (sun_azimuth + np.pi / 2 - heading) % np.pi
         return pol_angle
 
     def reset(self):

@@ -69,7 +69,8 @@ class LIFNeuron:
         p = self.params
 
         # Neuromodulationseffekte auf Erregbarkeit
-        gain = self.modulation['octopamine'] * self.modulation['dopamine']
+        # OA erhöht Erregbarkeit (cAMP), DA wirkt primär auf Synapsen (hier nur leichter Gain)
+        gain = 0.7 + self.modulation['octopamine'] * 0.2 + self.modulation['dopamine'] * 0.1
         I_mod = I_ext * gain
 
         # Refraktäre Neuronen nicht updaten
@@ -137,7 +138,7 @@ class IzhikevichNeuron:
     # Vordefinierte Neuronentypen
     REGULAR_SPIKING = {'a': 0.02, 'b': 0.2, 'c': -65.0, 'd': 8.0}
     FAST_SPIKING = {'a': 0.1, 'b': 0.2, 'c': -65.0, 'd': 2.0}
-    BURSTING = {'a': 0.02, 'b': 0.2, 'c': -50.0, 'd': 2.0}
+    BURSTING = {'a': 0.02, 'b': 0.2, 'c': -55.0, 'd': 4.0}
     CHATTERING = {'a': 0.02, 'b': 0.2, 'c': -50.0, 'd': 2.0}
 
     def __init__(self, n_neurons: int, neuron_type: Optional[dict] = None,

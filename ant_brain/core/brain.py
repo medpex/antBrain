@@ -132,7 +132,10 @@ class Neuromodulator:
         tau = self.tau_rise if ht_target > self.levels['serotonin'] else self.tau_decay
         self.levels['serotonin'] += (ht_target - self.levels['serotonin']) * dt / tau
 
-        # Tyramin: Lokomotionsmodulation
+        # Tyramin: Lokomotionsmodulation (steigt bei Bewegung/Erregung)
+        ta_target = 1.0 + abs(reward) * 0.2 + threat * 0.3
+        tau = self.tau_rise if ta_target > self.levels['tyramine'] else self.tau_decay
+        self.levels['tyramine'] += (ta_target - self.levels['tyramine']) * dt / tau
         self.levels['tyramine'] = np.clip(self.levels['tyramine'], 0.5, 1.5)
 
     def apply_to_region(self, neurons):
@@ -263,8 +266,14 @@ class AntBrain:
         output = BrainOutput()
 
         # --- 1. Neuromodulation updaten ---
+        # Bedrohungslevel wird nach LH-Ergebnis aktualisiert (hier initial 0)
         threat = 0.0
         self.neuromodulator.update(sensory.reward, threat=threat, dt=dt)
+
+        # Neuromodulation auf alle Regionen anwenden
+        self.neuromodulator.apply_to_region(self.antennal_lobe.glomeruli[0].pns)
+        self.neuromodulator.apply_to_region(self.mushroom_body.kenyon_cells)
+        self.neuromodulator.apply_to_region(self.central_complex.ring_attractor.neurons)
 
         # --- 2. Olfaktorische Verarbeitung (Antennallobus) ---
         if sensory.odor_vector is not None:
@@ -289,6 +298,11 @@ class AntBrain:
         # --- 4. Lateralhorn (angeborene Reaktionen) ---
         lh_result = self.lateral_horn.step(al_result['lalt_spikes'], dt)
 
+        # Bedrohungslevel basierend auf LH-Alarm aktualisieren
+        alarm_activity = lh_result['channel_activity'][LateralHorn.CHANNEL_ALARM]
+        if alarm_activity > 0.01:
+            self.neuromodulator.update(sensory.reward, threat=alarm_activity, dt=dt)
+
         # --- 5. Pilzkörper (Lernen und Integration) ---
         # Visueller Input: OL lobula spikes direkt als visuelle Eingabe
         # (MB integriert visuellen Input intern über syn_vis_kc)
@@ -302,8 +316,34 @@ class AntBrain:
         )
 
         # --- 6. Zentralkomplex (Navigation) ---
+        # OL → CX: Polarisationsspikes als Kompasssignal
+        cx_pol_input = self.syn_ol_cx.transmit(ol_result['polarization_spikes'])
+        # Dekodiere den Kompasswinkel aus den DRA-Spikes
+        if ol_result['polarization_spikes'].any():
+            dra_angles = np.linspace(0, np.pi, len(ol_result['polarization_spikes']))
+            active = ol_result['polarization_spikes']
+            if active.sum() > 0:
+                decoded_compass = np.arctan2(
+                    np.sin(2 * dra_angles[active]).mean(),
+                    np.cos(2 * dra_angles[active]).mean()
+                ) / 2.0
+                decoded_compass = decoded_compass % (2 * np.pi)
+                # Mische dekodierten Kompass mit sensorischem Input (70/30)
+                cx = 0.7 * np.cos(sensory.compass_angle) + 0.3 * np.cos(decoded_compass)
+                cy = 0.7 * np.sin(sensory.compass_angle) + 0.3 * np.sin(decoded_compass)
+                compass_for_cx = np.arctan2(cy, cx) % (2 * np.pi)
+            else:
+                compass_for_cx = sensory.compass_angle
+        else:
+            compass_for_cx = sensory.compass_angle
+
+        # Zusätzlich CX-Ringattractor mit OL-Polarisationsstrom verstärken
+        ra = self.central_complex.ring_attractor
+        if len(cx_pol_input) == ra.n_total:
+            ra.neurons.v += cx_pol_input * 0.05
+
         cx_result = self.central_complex.step(
-            sensory.compass_angle,
+            compass_for_cx,
             sensory.speed,
             sensory.angular_velocity,
             dt
@@ -322,6 +362,7 @@ class AntBrain:
             feed_command=sensory.feed_command,
             dt=dt
         )
+        self._last_seg_result = seg_result
 
         # --- 8. Verhaltenszustand bestimmen ---
         self._update_behavioral_state(lh_result, mb_result, cx_result)
@@ -362,6 +403,10 @@ class AntBrain:
             self.behavioral_state = "homing"
         else:
             self.behavioral_state = "idle"
+
+        # Feeding-Zustand überschreibt andere wenn SEG aktiv
+        if hasattr(self, '_last_seg_result') and self._last_seg_result.get('feeding_active', False):
+            self.behavioral_state = "feeding"
 
     def run(self, sensory_sequence: list[SensoryInput],
             callback=None) -> list[BrainOutput]:

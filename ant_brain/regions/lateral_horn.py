@@ -55,9 +55,15 @@ class LateralHorn:
             label="LH_output")
 
         # PN → LH Synapsen (fest verdrahtet, nicht plastisch) - stronger weights
+        # Force dense matrix for innate circuit weight manipulation
         self.syn_pn_lh = Synapse(n_pn_input, n_neurons,
             connectivity=0.2, weight_mean=1.5, excitatory=True,
             label="PN→LH")
+        # Ensure dense for _setup_innate_circuits slice indexing
+        if self.syn_pn_lh.use_sparse:
+            from scipy import sparse
+            self.syn_pn_lh.weights = self.syn_pn_lh.weights.toarray()
+            self.syn_pn_lh.use_sparse = False
 
         # LH → Ausgabe Synapsen - stronger to drive output neurons
         self.syn_lh_out = Synapse(n_neurons, self.N_CHANNELS,

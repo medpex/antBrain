@@ -162,18 +162,24 @@ class MushroomBody:
         mbon_spikes = self.mbons.step(I_mbon, dt)
 
         # --- Dopamin-System ---
-        # Belohnungssignal aktiviert DANs
+        # Belohnungssignal aktiviert DANs (kompartiment-spezifisch)
         if abs(reward_signal) > 0.01:
-            I_dan = np.full(self.n_dan, reward_signal * 5.0)
+            # Positive Belohnung → appetitive DANs (PAM-äquivalent)
+            # Negative Belohnung → aversive DANs (PPL1-äquivalent)
+            I_dan = np.zeros(self.n_dan)
+            if reward_signal > 0:
+                I_dan[:self.n_dan//2] = reward_signal * 5.0  # PAM-Cluster
+            else:
+                I_dan[self.n_dan//2:] = abs(reward_signal) * 5.0  # PPL1-Cluster
             dan_spikes = self.dans.step(I_dan, dt)
 
-            # Dopamin moduliert STDP
+            # DA-Level basierend auf aktiven DANs und ihren Ziel-MBONs
             da_level = 1.0 + reward_signal
             self.syn_kc_mbon.set_dopamine(da_level)
         else:
             I_dan = np.zeros(self.n_dan)
             self.dans.step(I_dan, dt)
-            self.syn_kc_mbon.set_dopamine(0.5)  # Baseline - enough for slow learning
+            self.syn_kc_mbon.set_dopamine(0.5)  # Baseline
 
         # --- STDP-Update ---
         self.syn_kc_mbon.update_stdp(kc_spikes, mbon_spikes, dt)
@@ -181,7 +187,8 @@ class MushroomBody:
         # Metriken
         sparseness_actual = kc_spikes.sum() / self.n_kc
 
-        self.mbon_output = mbon_spikes.astype(float)
+        # Gleitender Mittelwert statt binärer Spike-Ausgabe
+        self.mbon_output = 0.9 * self.mbon_output + 0.1 * mbon_spikes.astype(float)
 
         return {
             'mbon_spikes': mbon_spikes,

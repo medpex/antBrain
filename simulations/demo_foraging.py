@@ -62,9 +62,8 @@ def run_foraging_simulation(duration_ms: float = 5000, dt: float = 0.5):
     nest_pos = np.array([50.0, 50.0])
     food_pos = np.array([30.0, 35.0])
 
-    # Nahrungsgeruchsvektor
-    food_odor = np.zeros(50)
-    food_odor[5:10] = 1.0  # Nahrungsgeruch aktiviert bestimmte Glomeruli
+    # Nahrungsgeruchsvektor — über create_odor_vector erzeugen für korrekte Glomeruli-Zuordnung
+    food_odor = brain.antennal_lobe.create_odor_vector('food', 0.8)
 
     # Trail-Pheromonpositionen
     trail_points = [
@@ -129,7 +128,8 @@ def run_foraging_simulation(duration_ms: float = 5000, dt: float = 0.5):
 
         # Visuelle Eingabe
         landmarks = [
-            {'angle': 0.0, 'distance': np.linalg.norm(pos - nest_pos),
+            {'angle': np.arctan2(nest_pos[1] - pos[1], nest_pos[0] - pos[0]),
+             'distance': np.linalg.norm(pos - nest_pos),
              'size': 5.0, 'brightness': 0.8},
         ]
         visual_input = left_eye.process_scene(landmarks=landmarks, heading=heading)
@@ -292,9 +292,10 @@ def plot_results(positions, headings, states, alarm, attraction,
     ax6.set_title('Kopfrichtung')
     ax6.grid(True, alpha=0.3)
 
-    plt.savefig('/root/neuronal/simulations/foraging_result.png', dpi=150,
-               bbox_inches='tight')
-    print("\nVisualisierung gespeichert: simulations/foraging_result.png")
+    output_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(output_dir, 'foraging_result.png')
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"\nVisualisierung gespeichert: {output_path}")
 
 
 if __name__ == "__main__":

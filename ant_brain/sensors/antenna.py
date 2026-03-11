@@ -90,12 +90,16 @@ class Antenna:
         # Rezeptorsensitivität
         activation *= self.sensitivity
 
-        # Adaptation
-        self.adaptation -= (self.adaptation - 1) * dt / self.tau_adaptation
-        adapt_factor = np.where(activation > 0.1,
-                               self.adaptation * 0.999,
-                               self.adaptation)
-        self.adaptation = np.clip(adapt_factor, 0.1, 1.0)
+        # Adaptation (zeitnormalisiert)
+        # Bei Stimulation: exponentielle Abschwächung
+        # Ohne Stimulation: Erholung Richtung 1.0
+        decay = np.exp(-dt / self.tau_adaptation)
+        self.adaptation = np.where(
+            activation > 0.1,
+            self.adaptation * decay,               # Adaptation bei Stimulation
+            self.adaptation + (1.0 - self.adaptation) * dt / self.tau_adaptation  # Erholung
+        )
+        self.adaptation = np.clip(self.adaptation, 0.1, 1.0)
         activation *= self.adaptation
 
         # Rauschen

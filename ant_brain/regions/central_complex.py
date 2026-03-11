@@ -101,6 +101,10 @@ class RingAttractor:
         shift_signal = angular_velocity * 0.01
         shift_col = int(np.round(shift_signal)) % self.n_columns
 
+        # Bump um shift_col Spalten rotieren (Dead Reckoning)
+        if shift_col != 0:
+            self.bump = np.roll(self.bump, shift_col)
+
         # Rekurrenter Input
         spike_float = self.neurons.spikes.astype(float)
         I_rec = self.w_exc @ spike_float + self.w_inh @ spike_float
@@ -212,6 +216,18 @@ class CentralComplex:
         ra_result = self.ring_attractor.step(compass_angle, angular_velocity, dt)
         heading = ra_result['heading']
 
+        # --- Protocerebralbrücke (PB → EB) ---
+        I_pb = np.zeros(self.n_pb)
+        # PB-Neuronen kodieren Heading über Spalten
+        target_col = int((heading / (2 * np.pi)) * self.n_columns) % self.n_columns
+        col_size = self.n_pb // self.n_columns
+        I_pb[target_col * col_size:(target_col + 1) * col_size] = 5.0
+        pb_spikes = self.pb_neurons.step(I_pb, dt)
+        # PB → EB Verbindung (verstärkt den Bump)
+        I_pb_to_eb = self.syn_pb_eb.transmit(pb_spikes)
+        # Addiere PB-Signal als zusätzlichen Input zum Ring-Attraktor
+        self.ring_attractor.neurons.v += I_pb_to_eb * 0.1
+
         # --- Odometer (Noduli) ---
         self.current_speed = speed
         I_noduli = np.full(self.n_noduli, speed * 2.0)
@@ -244,8 +260,12 @@ class CentralComplex:
         # Normalisierung auf [-π, π]
         angle_diff = (angle_diff + np.pi) % (2 * np.pi) - np.pi
 
-        self.steering[0] = max(0, -angle_diff)  # Links drehen
-        self.steering[1] = max(0, angle_diff)    # Rechts drehen
+        # FB-Neuronen modulieren Steuerungsstärke basierend auf Heimdistanz
+        fb_rate = fb_spikes.sum() / max(self.n_fb, 1)
+        steering_gain = 1.0 + fb_rate * 2.0  # Stärkere Steuerung bei höherer FB-Aktivität
+
+        self.steering[0] = max(0, -angle_diff) * steering_gain  # Links drehen
+        self.steering[1] = max(0, angle_diff) * steering_gain    # Rechts drehen
 
         return {
             'heading': heading,
@@ -263,6 +283,8 @@ class CentralComplex:
 
     def reset(self):
         self.ring_attractor.neurons.reset()
+        self.ring_attractor.heading = 0.0
+        self.ring_attractor.bump[:] = 0.0
         self.pb_neurons.reset()
         self.fb_neurons.reset()
         self.noduli.reset()
