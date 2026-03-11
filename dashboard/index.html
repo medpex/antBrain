@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AntBrain - Neural Simulation Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d1117;--panel:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#484f58;
+  --al:#50fa7b;--mb:#ff79c6;--ol:#8be9fd;--cx:#ffb86c;--lh:#bd93f9;--seg:#ff5555;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,sans-serif;font-size:11px}
+
+/* === HEADER === */
+.hdr{height:32px;background:var(--panel);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 16px;gap:20px;font-size:11px}
+.hdr-title{font-weight:700;color:var(--ol);font-size:13px}
+.hdr-title em{color:var(--mb);font-style:normal}
+.hdr-sep{color:var(--border)}
+.hdr-item{color:var(--dim)}.hdr-item b{color:var(--text);font-weight:500}
+.badge{display:inline-block;padding:2px 10px;border-radius:3px;font-size:10px;
+  font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.st-idle{background:#21262d;color:var(--dim)}
+.st-foraging{background:#1a3a1e;color:var(--al)}
+.st-alarm{background:#3a1a1e;color:var(--seg)}
+.st-homing{background:#1a2a3e;color:var(--ol)}
+.st-feeding{background:#3a2a1e;color:var(--cx)}
+
+/* === LAYOUT: 3 columns top, full-width bottom === */
+.wrap{height:calc(100vh - 32px);display:flex;flex-direction:column}
+.top{flex:1;display:flex;gap:1px;background:var(--border);min-height:0}
+.top .cv-panel:first-child{flex:.5} /* Brain Map schmaler */
+.bot{height:180px;flex-shrink:0;background:var(--panel);border-top:1px solid var(--border);position:relative}
+
+/* Canvas panels */
+.cv-panel{background:var(--panel);flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.cv-panel .label{position:absolute;top:4px;left:8px;font-size:9px;text-transform:uppercase;
+  letter-spacing:1px;color:var(--dim);z-index:1;pointer-events:none}
+.cv-panel canvas{width:100%;height:100%;display:block}
+
+/* Right sidebar */
+.sidebar{width:280px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);
+  overflow-y:auto;overflow-x:hidden;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* Section headers */
+.sh{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+  border-bottom:1px solid var(--border);padding-bottom:2px;margin-top:4px}
+
+/* Horizontal bars */
+.bar{display:flex;align-items:center;gap:4px;height:16px}
+.bar-l{width:72px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.bar-t{flex:1;height:6px;background:#21262d;border-radius:3px;overflow:hidden}
+.bar-f{height:100%;border-radius:3px;transition:width .15s}
+.bar-v{width:40px;text-align:right;font-size:9px;flex-shrink:0;font-variant-numeric:tabular-nums}
+
+/* CX bump */
+.cx-row{display:flex;gap:2px;height:28px;align-items:flex-end}
+.cx-col{flex:1;border-radius:2px 2px 0 0;transition:height .1s,background .1s;background:#21262d;min-height:2px}
+
+/* Stat pairs */
+.sp{display:grid;grid-template-columns:1fr 1fr;gap:1px 8px;font-size:10px}
+.sp .k{color:var(--dim)}.sp .v{text-align:right;font-variant-numeric:tabular-nums}
+
+/* Buttons */
+.btns{display:flex;gap:4px;flex-wrap:wrap}
+.btn{background:#21262d;border:1px solid var(--border);color:var(--text);padding:3px 10px;
+  border-radius:3px;cursor:pointer;font:inherit;font-size:10px;transition:all .12s;white-space:nowrap}
+.btn:hover{border-color:var(--ol);color:var(--ol)}
+.btn.on{background:#1a3a1e;border-color:var(--al);color:var(--al)}
+.btn.warn{border-color:var(--seg)}.btn.warn:hover{color:var(--seg)}
+.ij-alarm{border-color:var(--seg)}.ij-alarm.on{background:#3a1a1e;color:var(--seg);border-color:var(--seg)}
+.ij-food{border-color:var(--al)}.ij-food.on{background:#1a3a1e;color:var(--al);border-color:var(--al)}
+.ij-trail{border-color:var(--ol)}.ij-trail.on{background:#1a2a3e;color:var(--ol);border-color:var(--ol)}
+.ij-nest{border-color:var(--cx)}.ij-nest.on{background:#3a2a1e;color:var(--cx);border-color:var(--cx)}
+
+.sld{display:flex;align-items:center;gap:4px}
+.sld label{color:var(--dim);width:42px;flex-shrink:0}
+.sld input[type=range]{flex:1;accent-color:var(--ol);height:3px}
+.sld span{width:32px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* Bottom spike label */
+.bot .label{position:absolute;top:4px;left:8px;font-size:9px;text-transform:uppercase;
+  letter-spacing:1px;color:var(--dim);z-index:1;pointer-events:none}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <span class="hdr-title"><em>ANT</em>BRAIN</span>
+  <span class="hdr-sep">|</span>
+  <span class="hdr-item">Neurons <b id="hN">--</b></span>
+  <span class="hdr-item">Step <b id="hSt">0</b></span>
+  <span class="hdr-item">Time <b id="hT">0s</b></span>
+  <span class="hdr-item">FPS <b id="hFps">--</b></span>
+  <span id="hBadge"></span>
+</div>
+
+<div class="wrap">
+  <!-- TOP ROW -->
+  <div class="top">
+    <!-- Brain Map -->
+    <div class="cv-panel">
+      <div class="label">Brain Map</div>
+      <canvas id="cvBrain"></canvas>
+    </div>
+    <!-- Arena -->
+    <div class="cv-panel">
+      <div class="label">Arena</div>
+      <canvas id="cvArena"></canvas>
+    </div>
+    <!-- Sidebar -->
+    <div class="sidebar" id="sb">
+      <div class="sh">State</div>
+      <div id="rSt"></div>
+
+      <div class="sh">Lateral Horn</div>
+      <div id="rLH"></div>
+
+      <div class="sh">Neuromodulation</div>
+      <div id="rNM"></div>
+
+      <div class="sh">CX Heading</div>
+      <div class="cx-row" id="rCX"></div>
+      <div style="text-align:center;font-size:9px;color:var(--dim)"><span id="rHd">0</span>&deg;</div>
+
+      <div class="sh">Neurons</div>
+      <div id="rNB"></div>
+
+      <div class="sh">Mushroom Body</div>
+      <div class="sp" id="rMB"></div>
+
+      <div class="sh">Navigation</div>
+      <div class="sp" id="rNv"></div>
+
+      <div class="sh">Controls</div>
+      <div class="btns">
+        <button class="btn" id="bP" onclick="tog()">&#9654; Play</button>
+        <button class="btn warn" onclick="rst()">Reset</button>
+      </div>
+      <div class="sld">
+        <label>Speed</label>
+        <input type="range" id="sSpd" min="0.1" max="10" step="0.1" value="1" oninput="spd(this.value)">
+        <span id="vSpd">1.0x</span>
+      </div>
+
+      <div class="sh">Inject Pheromone</div>
+      <div class="btns">
+        <button class="btn ij-alarm" onclick="inj('alarm')">Alarm</button>
+        <button class="btn ij-food" onclick="inj('food')">Food</button>
+        <button class="btn ij-trail" onclick="inj('trail')">Trail</button>
+        <button class="btn ij-nest" onclick="inj('nestmate')">Nest</button>
+        <button class="btn" onclick="clrInj()">&times;</button>
+      </div>
+      <div class="sld">
+        <label>Conc.</label>
+        <input type="range" id="sCon" min="0" max="1" step="0.05" value="0.5" oninput="uCon(this.value)">
+        <span id="vCon">0.50</span>
+      </div>
+      <div class="btns">
+        <button class="btn" onclick="rew(1)">+Reward</button>
+        <button class="btn warn" onclick="rew(-1)">-Punish</button>
+        <button class="btn" onclick="rew(0)">Neutral</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM: Spike chart -->
+  <div class="bot">
+    <div class="label">Spike Rates</div>
+    <canvas id="cvSpike"></canvas>
+  </div>
+</div>
+
+<script>
+let S={},fps=0,fc=0,lt=performance.now(),aInj=null;
+
+// === API ===
+async function fetchState(){
+  try{const r=await fetch('/api/state');S=await r.json();render();
+    fc++;const n=performance.now();if(n-lt>1000){fps=Math.round(fc*1000/(n-lt));fc=0;lt=n}
+  }catch(e){}}
+function post(u,d){fetch(u,{method:'POST',body:JSON.stringify(d),headers:{'Content-Type':'application/json'}})}
+function tog(){post('/api/control',{action:'toggle'})}
+function rst(){post('/api/control',{action:'reset'})}
+function spd(v){document.getElementById('vSpd').textContent=parseFloat(v).toFixed(1)+'x';post('/api/control',{action:'speed',value:+v})}
+function inj(t){aInj=t;document.querySelectorAll('[class*=ij-]').forEach(b=>b.classList.remove('on'));
+  const b=document.querySelector('.ij-'+t);if(b)b.classList.add('on');
+  post('/api/inject',{odor:t,concentration:+document.getElementById('sCon').value})}
+function clrInj(){aInj=null;document.querySelectorAll('[class*=ij-]').forEach(b=>b.classList.remove('on'));fetch('/api/clear_inject',{method:'POST'})}
+function uCon(v){document.getElementById('vCon').textContent=parseFloat(v).toFixed(2);if(aInj)inj(aInj)}
+function rew(v){post('/api/inject',{odor:aInj,concentration:+document.getElementById('sCon').value,reward:v})}
+
+// === Canvas sizing ===
+function sz(cv){
+  const p=cv.parentElement;
+  const w=p.clientWidth, h=p.clientHeight;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=w*dpr; cv.height=h*dpr;
+  cv.style.width=w+'px'; cv.style.height=h+'px';
+  return{W:cv.width,H:cv.height,dpr};
+}
+
+// === Bars ===
+function mkBars(el,data,cfg,mx=1){
+  let h='';
+  for(const[k,v]of Object.entries(data)){
+    const c=(cfg[k]||{}).c||'var(--dim)';
+    const pct=Math.min(100,(v/mx)*100);
+    h+=`<div class="bar"><span class="bar-l">${k}</span><div class="bar-t"><div class="bar-f" style="width:${pct}%;background:${c}"></div></div><span class="bar-v" style="color:${c}">${v.toFixed(3)}</span></div>`;
+  }
+  el.innerHTML=h;
+}
+
+// === RENDER ===
+function render(){
+  if(!S.step)return;
+  const bs=S.behavioral_state||'idle';
+  // Header
+  document.getElementById('hN').textContent=(S.total_neurons||0).toLocaleString();
+  document.getElementById('hSt').textContent=(S.step||0).toLocaleString();
+  document.getElementById('hT').textContent=(S.time_s||0).toFixed(1)+'s';
+  document.getElementById('hFps').textContent=fps;
+  document.getElementById('hBadge').innerHTML=`<span class="badge st-${bs}">${bs}</span>`;
+  const bp=document.getElementById('bP');
+  bp.innerHTML=S.paused?'&#9654; Play':'&#9646;&#9646; Pause';
+  bp.classList.toggle('on',!S.paused);
+
+  // State
+  document.getElementById('rSt').innerHTML=`<span class="badge st-${bs}">${bs.toUpperCase()}</span>`;
+
+  // LH
+  mkBars(document.getElementById('rLH'),S.lh_channels||{},
+    {alarm:{c:'var(--seg)'},attraction:{c:'var(--al)'},avoidance:{c:'var(--cx)'},social:{c:'var(--lh)'}});
+
+  // Neuromod
+  mkBars(document.getElementById('rNM'),S.neuromodulation||{},
+    {dopamine:{c:'var(--mb)'},octopamine:{c:'var(--al)'},serotonin:{c:'var(--ol)'},tyramine:{c:'var(--cx)'}},2);
+
+  // CX bump
+  const bump=S.cx_bump||[];
+  const cxE=document.getElementById('rCX');
+  if(bump.length&&cxE.children.length!==bump.length)
+    cxE.innerHTML=bump.map(()=>'<div class="cx-col"></div>').join('');
+  const mxB=Math.max(...bump,0.01);
+  for(let i=0;i<bump.length;i++){
+    if(!cxE.children[i])continue;
+    const t=bump[i]/mxB;
+    cxE.children[i].style.height=Math.max(2,t*28)+'px';
+    cxE.children[i].style.background=`rgba(255,184,108,${.15+t*.85})`;
+  }
+  document.getElementById('rHd').textContent=Math.round(S.heading_deg||0);
+
+  // Neuron bars
+  if(S.neuron_counts){
+    const el=document.getElementById('rNB');
+    const cs={'Antennallobus':'var(--al)','Pilzkörper':'var(--mb)','Optischer Lobus':'var(--ol)',
+      'Zentralkomplex':'var(--cx)','Lateralhorn':'var(--lh)','SEG':'var(--seg)'};
+    const tot=S.total_neurons||1;
+    let h='';
+    for(const[k,v]of Object.entries(S.neuron_counts)){
+      const c=cs[k]||'var(--dim)';const pct=v/tot*100;
+      h+=`<div class="bar"><span class="bar-l" style="color:${c}">${k}</span><div class="bar-t"><div class="bar-f" style="width:${pct}%;background:${c}"></div></div><span class="bar-v">${v.toLocaleString()}</span></div>`;
+    }
+    el.innerHTML=h;
+  }
+
+  // MB
+  document.getElementById('rMB').innerHTML=
+    `<span class="k">KC active</span><span class="v">${S.kc_active||0} / ${(S.kc_total||0).toLocaleString()}</span>`+
+    `<span class="k">Sparseness</span><span class="v">${((S.kc_sparseness||0)*100).toFixed(3)}%</span>`+
+    `<span class="k">STDP wt</span><span class="v">${(S.stdp_mean_weight||0).toFixed(4)}</span>`;
+
+  // Nav
+  const p=S.position||[0,0],st=S.steering||[0,0];
+  document.getElementById('rNv').innerHTML=
+    `<span class="k">Position</span><span class="v">${p[0].toFixed(1)}, ${p[1].toFixed(1)}</span>`+
+    `<span class="k">Home</span><span class="v">${(S.home_distance||0).toFixed(1)} cm</span>`+
+    `<span class="k">Steer</span><span class="v">L${st[0].toFixed(2)} R${st[1].toFixed(2)}</span>`;
+
+  drawBrain();
+  drawArena();
+  drawSpike();
+}
+
+// ============ BRAIN MAP ============
+function drawBrain(){
+  const cv=document.getElementById('cvBrain');
+  const{W,H,dpr}=sz(cv);
+  if(W<10||H<10)return;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+
+  const rates=S.spike_rates||{};
+  const lr=k=>{const a=rates[k]||[];return a.length?a[a.length-1]:0};
+
+  const R=[
+    {n:'AL',      k:'AL',   fx:.50,fy:.14,rx:.15,ry:.05,c:'#50fa7b'},
+    {n:'MB',      k:'MB_KC',fx:.32,fy:.36,rx:.11,ry:.10,c:'#ff79c6'},
+    {n:'MB',      k:'MB_KC',fx:.68,fy:.36,rx:.11,ry:.10,c:'#ff79c6'},
+    {n:'OL',      k:'OL',   fx:.10,fy:.42,rx:.06,ry:.09,c:'#8be9fd'},
+    {n:'OL',      k:'OL',   fx:.90,fy:.42,rx:.06,ry:.09,c:'#8be9fd'},
+    {n:'CX',      k:'CX',   fx:.50,fy:.48,rx:.08,ry:.04,c:'#ffb86c'},
+    {n:'LH',      k:'LH',   fx:.26,fy:.20,rx:.05,ry:.035,c:'#bd93f9'},
+    {n:'LH',      k:'LH',   fx:.74,fy:.20,rx:.05,ry:.035,c:'#bd93f9'},
+    {n:'SEG',     k:'SEG',  fx:.50,fy:.70,rx:.11,ry:.05,c:'#ff5555'},
+  ];
+
+  const conns=[[0,1],[0,2],[0,6],[0,7],[3,1],[4,2],[3,5],[4,5],[1,5],[2,5],[5,8],[6,8],[7,8]];
+
+  // connections
+  ctx.lineWidth=1*dpr;
+  for(const[a,b]of conns){
+    const ra=R[a],rb=R[b];
+    const rate=Math.max(lr(ra.k),lr(rb.k));
+    ctx.strokeStyle=`rgba(72,79,88,${.1+Math.min(rate*6,.6)})`;
+    ctx.beginPath();ctx.moveTo(ra.fx*W,ra.fy*H);ctx.lineTo(rb.fx*W,rb.fy*H);ctx.stroke();
+  }
+
+  // regions
+  const fs=Math.max(8*dpr,Math.min(12*dpr,W/50));
+  ctx.font=`600 ${fs}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';
+  for(const r of R){
+    const rate=lr(r.k);
+    const I=Math.min(1,rate*8);
+    const x=r.fx*W,y=r.fy*H,rx=r.rx*W,ry=r.ry*H;
+
+    if(I>.03){ctx.save();ctx.shadowColor=r.c;ctx.shadowBlur=I*30*dpr;
+      ctx.fillStyle=r.c+'30';ctx.beginPath();ctx.ellipse(x,y,rx+4*dpr,ry+4*dpr,0,0,Math.PI*2);ctx.fill();ctx.restore()}
+
+    ctx.fillStyle=r.c+(I>.1?'30':'18');
+    ctx.strokeStyle=r.c+(I>.1?'90':'50');
+    ctx.lineWidth=1.5*dpr;
+    ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle=r.c;ctx.fillText(r.n,x,y);
+  }
+
+  // antennae
+  ctx.strokeStyle='#50fa7b40';ctx.lineWidth=1.5*dpr;
+  ctx.beginPath();ctx.moveTo(.36*W,.11*H);ctx.quadraticCurveTo(.26*W,.02*H,.14*W,.005*H);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(.64*W,.11*H);ctx.quadraticCurveTo(.74*W,.02*H,.86*W,.005*H);ctx.stroke();
+  ctx.fillStyle='#50fa7b60';
+  ctx.beginPath();ctx.arc(.14*W,.005*H,2.5*dpr,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(.86*W,.005*H,2.5*dpr,0,Math.PI*2);ctx.fill();
+
+  // ventral nerve cord
+  ctx.strokeStyle='#ff555540';ctx.lineWidth=2.5*dpr;
+  ctx.beginPath();ctx.moveTo(.5*W,.76*H);ctx.lineTo(.5*W,.94*H);ctx.stroke();
+  for(const fy of[.80,.86,.92]){ctx.fillStyle='#ff555530';ctx.beginPath();ctx.arc(.5*W,fy*H,3*dpr,0,Math.PI*2);ctx.fill()}
+
+  // labels
+  ctx.font=`${8*dpr}px system-ui`;ctx.fillStyle='#484f58';ctx.textAlign='center';
+  ctx.fillText('anterior',.5*W,10*dpr);ctx.fillText('posterior',.5*W,H-4*dpr);
+}
+
+// ============ ARENA ============
+function drawArena(){
+  const cv=document.getElementById('cvArena');
+  const{W,H,dpr}=sz(cv);
+  if(W<10||H<10)return;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+
+  const pad=20*dpr;
+  const dim=Math.min(W,H)-pad*2;
+  const ox=(W-dim)/2, oy=(H-dim)/2;
+  const s=dim/100;
+
+  // grid
+  ctx.strokeStyle='#21262d';ctx.lineWidth=.5*dpr;
+  for(let i=0;i<=100;i+=10){
+    ctx.beginPath();ctx.moveTo(ox+i*s,oy);ctx.lineTo(ox+i*s,oy+dim);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ox,oy+i*s);ctx.lineTo(ox+dim,oy+i*s);ctx.stroke();
+  }
+  ctx.strokeStyle='#30363d';ctx.lineWidth=1*dpr;ctx.strokeRect(ox,oy,dim,dim);
+
+  // nest
+  const nest=S.nest||[50,50];
+  const nx=ox+nest[0]*s,ny=oy+nest[1]*s;
+  ctx.fillStyle='#8be9fd15';ctx.beginPath();ctx.arc(nx,ny,5*s,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#8be9fd50';ctx.lineWidth=1*dpr;ctx.stroke();
+  ctx.fillStyle='#8be9fd';ctx.font=`${9*dpr}px system-ui`;ctx.textAlign='center';
+  ctx.fillText('Nest',nx,ny-5.5*s);
+
+  // food
+  for(const f of(S.food_sources||[])){
+    const fx=ox+f.pos[0]*s,fy=oy+f.pos[1]*s;
+    ctx.fillStyle='#50fa7b12';ctx.beginPath();ctx.arc(fx,fy,3*s,0,Math.PI*2);ctx.fill();
+    star(ctx,fx,fy,2.5*s,5,'#50fa7b');
+    ctx.fillStyle='#50fa7b';ctx.font=`${8*dpr}px system-ui`;ctx.fillText(f.type||'',fx,fy-3.5*s);
+  }
+
+  // trail
+  const hist=S.position_history||[];
+  if(hist.length>1){
+    for(let i=1;i<hist.length;i++){
+      ctx.strokeStyle=`rgba(255,184,108,${i/hist.length*.5})`;ctx.lineWidth=1*dpr;
+      ctx.beginPath();ctx.moveTo(ox+hist[i-1][0]*s,oy+hist[i-1][1]*s);ctx.lineTo(ox+hist[i][0]*s,oy+hist[i][1]*s);ctx.stroke();
+    }
+  }
+
+  // home vector
+  const pos=S.position||[50,50];
+  const ax=ox+pos[0]*s,ay=oy+pos[1]*s;
+  if((S.home_distance||0)>.5){
+    const hv=S.home_vector||[0,0];
+    ctx.strokeStyle='#8be9fd35';ctx.setLineDash([4*dpr,4*dpr]);ctx.lineWidth=1*dpr;
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ox+(pos[0]-hv[0])*s,oy+(pos[1]-hv[1])*s);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ant body
+  const hd=S.heading||0;
+  ctx.save();ctx.translate(ax,ay);ctx.rotate(hd);
+  const a=Math.max(1,s*.32);
+  ctx.fillStyle='#5c3010';ctx.beginPath();ctx.ellipse(-10*a,0,7*a,5*a,0,0,Math.PI*2);ctx.fill();// gaster
+  ctx.fillStyle='#7a3f15';ctx.beginPath();ctx.ellipse(0,0,5*a,3.5*a,0,0,Math.PI*2);ctx.fill();// thorax
+  ctx.fillStyle='#9a5525';ctx.beginPath();ctx.ellipse(7*a,0,4.5*a,4*a,0,0,Math.PI*2);ctx.fill();// head
+  ctx.fillStyle='#111';ctx.beginPath();ctx.arc(9*a,-2.5*a,1.2*a,0,Math.PI*2);ctx.fill();// eyes
+  ctx.beginPath();ctx.arc(9*a,2.5*a,1.2*a,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#c8a070';ctx.lineWidth=1*dpr;
+  ctx.beginPath();ctx.moveTo(10*a,-3*a);ctx.quadraticCurveTo(14*a,-7*a,18*a,-9*a);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(10*a,3*a);ctx.quadraticCurveTo(14*a,7*a,18*a,9*a);ctx.stroke();
+  ctx.strokeStyle='#7a3f1580';ctx.lineWidth=.8*dpr;
+  for(const dy of[-1,1])for(const dx of[-6,-1,4]){
+    ctx.beginPath();ctx.moveTo(dx*a,dy*3.5*a);ctx.lineTo((dx+dy*4)*a,dy*9*a);ctx.stroke();}
+  ctx.restore();
+
+  // heading arrow
+  ctx.strokeStyle='#ff79c6a0';ctx.lineWidth=1.5*dpr;
+  const hl=20*Math.max(.8,s*.25);
+  const hx=ax+Math.cos(hd)*hl,hy=ay+Math.sin(hd)*hl;
+  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(hx,hy);ctx.stroke();
+  ctx.fillStyle='#ff79c6a0';ctx.beginPath();
+  ctx.moveTo(hx,hy);
+  ctx.lineTo(hx-Math.cos(hd-.4)*5*dpr,hy-Math.sin(hd-.4)*5*dpr);
+  ctx.lineTo(hx-Math.cos(hd+.4)*5*dpr,hy-Math.sin(hd+.4)*5*dpr);ctx.fill();
+
+  // state label
+  const bsc={idle:'#484f58',foraging:'#50fa7b',alarm:'#ff5555',homing:'#8be9fd',feeding:'#ffb86c'};
+  ctx.fillStyle=bsc[S.behavioral_state||'idle']||'#484f58';
+  ctx.font=`bold ${10*dpr}px system-ui`;ctx.textAlign='left';
+  ctx.fillText((S.behavioral_state||'').toUpperCase(),ox+4*dpr,oy+12*dpr);
+}
+
+function star(ctx,cx,cy,r,pts,c){
+  ctx.fillStyle=c;ctx.beginPath();
+  for(let i=0;i<pts*2;i++){const a=Math.PI/pts*i-Math.PI/2;const cr=i%2?r*.4:r;
+    const x=cx+Math.cos(a)*cr,y=cy+Math.sin(a)*cr;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+  ctx.closePath();ctx.fill();
+}
+
+// ============ SPIKE CHART ============
+function drawSpike(){
+  const cv=document.getElementById('cvSpike');
+  const{W,H,dpr}=sz(cv);
+  if(W<10||H<10)return;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+
+  const rates=S.spike_rates||{};
+  const keys=['AL','MB_KC','MB_MBON','OL','CX','LH','SEG'];
+  const cols=['#50fa7b','#ff79c6','#ff79c6','#8be9fd','#ffb86c','#bd93f9','#ff5555'];
+  const lbls=['AL','MB KC','MB MBON','OL','CX','LH','SEG'];
+  const dash=[[],[],[4*dpr,3*dpr],[],[],[],[]];
+
+  const m={t:8*dpr,r:80*dpr,b:18*dpr,l:36*dpr};
+  const pW=W-m.l-m.r, pH=H-m.t-m.b;
+
+  // y grid
+  ctx.strokeStyle='#21262d';ctx.lineWidth=.5*dpr;
+  ctx.fillStyle='#484f58';ctx.font=`${8*dpr}px system-ui`;ctx.textAlign='right';
+  for(let i=0;i<=4;i++){
+    const y=m.t+pH-i/4*pH;
+    ctx.beginPath();ctx.moveTo(m.l,y);ctx.lineTo(m.l+pW,y);ctx.stroke();
+    ctx.fillText((i*.25).toFixed(2),m.l-3*dpr,y+3*dpr);
+  }
+
+  // series
+  for(let k=0;k<keys.length;k++){
+    const data=rates[keys[k]]||[];if(!data.length)continue;
+    ctx.strokeStyle=cols[k];ctx.lineWidth=1.2*dpr;ctx.globalAlpha=.85;ctx.setLineDash(dash[k]||[]);
+    ctx.beginPath();
+    for(let i=0;i<data.length;i++){
+      const x=m.l+i/Math.max(data.length-1,1)*pW;
+      const y=m.t+pH-Math.min(data[i],1)*pH;
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.stroke();ctx.globalAlpha=1;ctx.setLineDash([]);
+  }
+
+  // legend
+  ctx.font=`${9*dpr}px system-ui`;ctx.textAlign='left';
+  for(let k=0;k<keys.length;k++){
+    const lx=m.l+pW+8*dpr, ly=m.t+8*dpr+k*14*dpr;
+    ctx.fillStyle=cols[k];ctx.fillRect(lx,ly-4*dpr,8*dpr,8*dpr);
+    ctx.fillStyle='#c9d1d9';ctx.fillText(lbls[k],lx+11*dpr,ly+3*dpr);
+  }
+
+  ctx.fillStyle='#484f58';ctx.textAlign='center';ctx.font=`${8*dpr}px system-ui`;
+  ctx.fillText('last 100 steps',m.l+pW/2,H-2*dpr);
+}
+
+// === LOOP ===
+window.addEventListener('resize',()=>{if(S.step)render()});
+setInterval(fetchState,100);
+fetchState();
+</script>
+</body>
+</html>

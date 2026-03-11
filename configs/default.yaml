@@ -1,0 +1,49 @@
+# Konfiguration: Ameisengehirn-Simulation
+# Basiert auf einer mittelgroßen Ameisenart (~250.000 Neuronen)
+
+brain:
+  # Antennallobus
+  n_glomeruli: 400           # ~400 Glomeruli (artspezifisch 200-500)
+  orns_per_glom: 120         # ORNs pro Glomerulus
+  lns_per_glom: 15           # Lokale Interneuronen pro Glomerulus
+  pns_per_glom: 5            # Projektionsneuronen pro Glomerulus
+
+  # Pilzkörper
+  n_kenyon_cells: 80000      # Kenyon-Zellen (24-36% aller Neuronen)
+  kc_sparseness: 0.05        # Ziel: 5% Aktivierung
+  n_mbon_types: 21           # MBON-Typen
+  n_dan_types: 20            # DAN-Typen
+
+  # Optischer Lobus
+  n_ommatidia: 600           # Ommatidien pro Auge
+  n_medulla: 3000
+  n_lobula: 1500
+
+  # Zentralkomplex
+  cx_columns: 16             # 16 Säulen in PB
+  cx_neurons_per_col: 20
+
+  # Lateralhorn
+  lh_neurons: 3000
+
+simulation:
+  dt: 0.1                    # Zeitschritt (ms)
+  duration_ms: 10000         # Simulationsdauer (ms)
+
+  # Umgebung
+  environment:
+    size: [100, 100]         # Arenagröße (cm)
+    nest_position: [50, 50]
+    food_sources:
+      - position: [20, 30]
+        type: sugar
+        concentration: 0.8
+      - position: [80, 70]
+        type: protein
+        concentration: 0.6
+
+neuromodulation:
+  dopamine_baseline: 1.0
+  octopamine_baseline: 1.0
+  serotonin_baseline: 1.0
+  tyramine_baseline: 1.0
